@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -78,7 +79,7 @@
         <button class="btn" id="startBtn" type="button">Start Camera</button>
         <button class="btn ghost" id="stopBtn" type="button">Stop</button>
       </div>
-      <p class="muted" style="margin-top:8px;">If the camera doesn't open or shows blank, the search box above works just as well.</p>
+      <p class="muted" id="scanStatus" style="margin-top:8px;">Camera not started.</p>
 
       <div class="result" id="resultCard">
         <div class="icon" id="resultIcon"></div>
@@ -143,7 +144,7 @@ document.getElementById("manualBtn").addEventListener("click", function(){
 var video = document.getElementById("video");
 var canvas = document.getElementById("canvas");
 var ctx = canvas.getContext("2d");
-var stream = null, scanning = false, lastCode = null, lastCodeTime = 0;
+var stream = null, scanning = false, lastCode = null, lastCodeTime = 0, frameCount = 0;
 document.getElementById("startBtn").addEventListener("click", startScanner);
 document.getElementById("stopBtn").addEventListener("click", stopScanner);
 
@@ -152,18 +153,23 @@ function startScanner(){
     showResult("invalid", "Camera Not Available", "This browser/page can't access the camera here — use the search box above instead.");
     return;
   }
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(s){
+  document.getElementById("scanStatus").textContent = "Requesting camera...";
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1280 } } }).then(function(s){
     stream = s;
     video.srcObject = stream;
     video.play();
     scanning = true;
+    frameCount = 0;
+    document.getElementById("scanStatus").textContent = "Camera on — point at a ticket's QR code.";
     requestAnimationFrame(tick);
   }).catch(function(err){
+    document.getElementById("scanStatus").textContent = "Camera failed: " + err.message;
     showResult("invalid", "Camera Unavailable", err.message + " — use the search box above instead.");
   });
 }
 function stopScanner(){
   scanning = false;
+  document.getElementById("scanStatus").textContent = "Camera stopped.";
   if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
 }
 function tick(){
@@ -172,11 +178,16 @@ function tick(){
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    var code = (typeof jsQR === "function") ? jsQR(imageData.data, imageData.width, imageData.height) : null;
+    var code = (typeof jsQR === "function") ? jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" }) : null;
+    frameCount++;
+    if(frameCount % 15 === 0){
+      document.getElementById("scanStatus").textContent = "Scanning... (" + canvas.width + "x" + canvas.height + ", frame " + frameCount + ")";
+    }
     if(code && code.data){
       var now = Date.now();
       if(!(code.data === lastCode && now - lastCodeTime < 3000)){
         lastCode = code.data; lastCodeTime = now;
+        document.getElementById("scanStatus").textContent = "Code read: \"" + code.data + "\"";
         handleScan(code.data.trim());
       }
     }
